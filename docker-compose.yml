@@ -1,0 +1,69 @@
+# =============================================================================
+# YOLO Object Detection & Distance Measurement System — Docker Compose Setup
+# Multi-service production orchestration for Flask CV Backend and React Frontend
+# =============================================================================
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: yolo-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - YOLO_MODEL=/app/yolov8n.pt
+      - YOLO_WEIGHTS_PATH=/app/yolov8n.pt
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persistent volume for model weight caching across container lifecycles
+      - model-cache:/app/weights
+      # Read-only bind mount for cached local model weights
+      - ./yolov8n.pt:/app/yolov8n.pt:ro
+      # Volume for uploaded input images
+      - backend-uploads:/app/backend/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 10s
+    networks:
+      - yolo-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api
+    container_name: yolo-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 5s
+    networks:
+      - yolo-network
+
+networks:
+  yolo-network:
+    driver: bridge
+
+volumes:
+  model-cache:
+    driver: local
+  backend-uploads:
+    driver: local
